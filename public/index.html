@@ -90,7 +90,19 @@ body { font-size:16px; }
 .maplibregl-popup-content { background:#1a1a2e !important; color:#fff !important; border-radius:10px !important; padding:8px 12px !important; font-size:13px !important; box-shadow:0 4px 20px rgba(0,0,0,.4) !important; border:1px solid rgba(255,255,255,.06) !important; }
 .maplibregl-popup-tip { border-top-color:#1a1a2e !important; }
 #nav-build { position:absolute; top:8px; right:8px; z-index:1001; color:#444; font-size:9px; padding:3px 8px; background:rgba(0,0,0,.4); border-radius:8px; backdrop-filter:blur(4px); }
+#auth-btn { display:flex; align-items:center; gap:6px; padding:5px 12px; border:none; border-radius:20px; background:rgba(255,255,255,.06); color:#ccc; font-size:12px; cursor:pointer; transition:background .15s,color .15s,box-shadow .15s; white-space:nowrap; }
+#auth-btn:hover { background:rgba(255,255,255,.1); color:#fff; }
+#auth-btn img { width:20px; height:20px; border-radius:50%; object-fit:cover; }
 </style>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+import{getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,deleteDoc,collection,getDocs,query,orderBy,Timestamp,writeBatch}from"https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+const fbConfig={apiKey:"AIzaSyDy1TBggUN8JNfRQJt9PwXygMW2haVr5Zc",authDomain:"gcloud-diogo-rocha-53ef7.firebaseapp.com",projectId:"gcloud-diogo-rocha-53ef7",storageBucket:"gcloud-diogo-rocha-53ef7.firebasestorage.app",messagingSenderId:"67737877746",appId:"1:67737877746:web:cc16c17f85379cc4e6e46b"};
+const app=initializeApp(fbConfig);const auth=getAuth(app);const db=getFirestore(app);const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});
+window.__fb={auth,db,provider,doc,getDoc,setDoc,deleteDoc,collection,getDocs,query,orderBy,Timestamp,writeBatch,signInWithPopup,signOut,onAuthStateChanged,user:null,ready:true};
+onAuthStateChanged(auth,user=>{window.__fb.user=user;document.dispatchEvent(new CustomEvent('fb-auth',{detail:{user}}));});
+</script>
 </head>
 <body>
 
@@ -99,7 +111,14 @@ body { font-size:16px; }
 <div id="sim-banner">🧪 SIM · 15 km/h</div>
 
 <div id="home">
-  <div id="home-header"><h1>Rota<span>Elétrica</span></h1><p>Navegação para triciclo elétrico</p></div>
+  <div id="home-header">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0 0;">
+      <h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px;">Rota<span style="color:#6C5CE7">Elétrica</span></h1>
+      <div id="auth-area"></div>
+    </div>
+    <p style="font-size:13px;color:#666;margin-top:2px;">Navegação para autopropelidos · beta</p>
+    <div style="font-size:10px;color:#444;margin-top:1px;">seus dados salvos na nuvem</div>
+  </div>
   <div id="home-gps-area">
     <div id="home-gps-status" style="display:block;padding:10px 12px;border-radius:10px;font-size:14px;text-align:center;background:#0a0a0a;color:#888;">📍 Aguardando GPS...</div>
     <div id="home-gps-acc"></div>
@@ -498,6 +517,7 @@ function saveTrip() {
     to_lng: dst.lng,
     distance_km: Math.round(accDist / 10) / 100
   });
+  dirty();
 }
 
 // ====== NAV ======
@@ -507,7 +527,7 @@ document.getElementById('btn-end-trip').addEventListener('click',()=>{
 });
 // battery tile (4th tile, index 3): click to recharge
 document.querySelector('#nav-tiles .nav-tile:nth-child(4)').addEventListener('click',async()=>{
-  if(confirm('Recarregar bateria e zerar odômetro?')){await db.setBat(100);await db.setOdo(0);upBattery();upOdo();}
+  if(confirm('Recarregar bateria e zerar odômetro?')){await db.setBat(100);await db.setOdo(0);upBattery();upOdo();dirty();}
 });
 
 map.on('click',e=>{
@@ -577,7 +597,7 @@ document.getElementById('btn-confirm-home').addEventListener('click',async()=>{
   if(!homeMkr){const he=elm('<div style="font-size:28px;line-height:1;text-align:center;">🏠</div>');
     homeMkr=new maplibregl.Marker({element:he}).setLngLat([lng,lat]).setPopup(new maplibregl.Popup().setText(addr)).addTo(map);}
   else homeMkr.setLngLat([lng,lat]).setPopup(new maplibregl.Popup().setText(addr));
-  await upsertCasaFav();rFavs();
+  await upsertCasaFav();rFavs();dirty();
   _homeSet=true;
   if(_homeTempMkr){_homeTempMkr.remove();_homeTempMkr=null;}
   _settingHome=false;_homeClick=null;$setHomeBar.style.display='none';showHome();});
@@ -594,8 +614,8 @@ async function rFavs(){const f=await db.favs();const e=document.getElementById('
   d.innerHTML=`<span class="name">${nm}</span><small>${rr?rr.name:''}</small>${isHome?`<button class="icon-btn" data-a="e">⚙️</button>`:`<button class="icon-btn" data-a="r">&#9998;</button><button class="icon-btn" data-a="d">&times;</button>`}`;
   d.addEventListener('click',(e)=>{if(e.target.closest('.icon-btn'))return;goToNav(x.lat,x.lng,isHome?'Casa':x.name);});
   if(isHome){d.querySelector('[data-a=e]').addEventListener('click',e=>{e.stopPropagation();startSetHome();});}
-  else{d.querySelector('[data-a=r]').addEventListener('click',async e=>{e.stopPropagation();const n=prompt('Renomear:',x.name);if(n&&n.trim()){x.name=n.trim();await db.updFav(x);rFavs();}});
-  d.querySelector('[data-a=d]').addEventListener('click',async e=>{e.stopPropagation();await db.delFav(x.id);rFavs();});}e.appendChild(d);});
+  else{d.querySelector('[data-a=r]').addEventListener('click',async e=>{e.stopPropagation();const n=prompt('Renomear:',x.name);if(n&&n.trim()){x.name=n.trim();await db.updFav(x);rFavs();dirty();}});
+  d.querySelector('[data-a=d]').addEventListener('click',async e=>{e.stopPropagation();await db.delFav(x.id);rFavs();dirty();});}e.appendChild(d);});
 }
 
 // ====== HOME: HISTORY (trips + recents merged, deduped by location) ======
@@ -620,11 +640,11 @@ async function rHistory(){const t=await db.trips(),r=await db.recents();const e=
     d.addEventListener('click',(e)=>{if(e.target.closest('.icon-btn'))return;goToNav(x.lat,x.lng,x.name);});
     d.querySelector('[data-a=fav]').addEventListener('click',async e=>{e.stopPropagation();
       await db.addFav(x.name,x.lat,x.lng);
-      rFavs();rHistory();});
+      rFavs();rHistory();dirty();});
     d.querySelector('[data-a=del]').addEventListener('click',async e=>{e.stopPropagation();
       if(x.type==='trip')await dl('t',parseInt(x.id.slice(1),10));
       else await dl('r',parseInt(x.id.slice(1),10));
-      rHistory();});
+      rHistory();dirty();});
     e.appendChild(d);
   }
   if(!shown)e.innerHTML='<div style="color:#555;font-size:12px;padding:4px;">Nenhum histórico</div>';
@@ -916,6 +936,23 @@ async function init(){
   setTimeout(()=>requestGPS(), 300);
 }
 if(map.isStyleLoaded())init();else{map.on('load',init);setTimeout(init,5000);}
+
+// ====== FIREBASE AUTH + CLOUD SYNC ======
+function renderAuth(){const a=document.getElementById('auth-area'),fb=window.__fb;if(!fb||!fb.ready){a.innerHTML='';return;}
+  if(fb.user){const u=fb.user;a.innerHTML=`<button id="auth-btn" title="Clique para sair"><img src="${u.photoURL||''}" alt=""> ${u.displayName||''}</button>`;
+    document.getElementById('auth-btn').onclick=()=>fb.signOut(fb.auth);}
+  else{a.innerHTML=`<button id="auth-btn" style="background:#fff;color:#444;font-size:12px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,.2);padding:5px 14px;"><span style="color:#4285F4;font-weight:700;margin-right:4px;">G</span> Entrar</button>`;
+    document.getElementById('auth-btn').onclick=()=>fb.signInWithPopup(fb.auth,fb.provider).catch(()=>{});}}
+async function syncDown(){const fb=window.__fb;if(!fb||!fb.user)return;const snap=await fb.getDoc(fb.doc(fb.db,'users',fb.user.uid));if(!snap.exists())return;
+  const d=snap.data();if(d.home){HOME={lat:d.home.lat,lng:d.home.lng,address:d.home.address||'Casa'};_homeSet=true;await db.setHome(HOME.lat,HOME.lng,HOME.address);}
+  if(d.odometer!=null)await db.setOdo(d.odometer);if(d.favorites&&d.favorites.length){const ex=await db.favs();for(const f of d.favorites)if(!ex.find(x=>Math.abs(x.lat-f.lat)<1e-4&&Math.abs(x.lng-f.lng)<1e-4))await db.addFav(f.name,f.lat,f.lng);}
+  if(d.recents&&d.recents.length){const ex=await db.recents();for(const r of d.recents)if(!ex.find(x=>Math.abs(x.lat-r.lat)<1e-4&&Math.abs(x.lng-r.lng)<1e-4))await ad('r',{name:r.name,lat:r.lat,lng:r.lng,created_at:r.created_at||Math.floor(Date.now()/1000)});}
+  rFavs();rHistory();upOdo();upBattery();}
+async function syncUp(){const fb=window.__fb;if(!fb||!fb.user)return;const[h,favs]=await Promise.all([db.home(),db.favs()]);const recents=await ga('r');const odo=await db.odo();
+  await fb.setDoc(fb.doc(fb.db,'users',fb.user.uid),{home:h||null,favorites:favs||[],recents:recents||[],odometer:odo||0,odometer_updated:Date.now()});}
+let _syncTO=null;function dirty(){clearTimeout(_syncTO);_syncTO=setTimeout(syncUp,3000);}
+document.addEventListener('fb-auth',async e=>{renderAuth();if(e.detail.user){await syncDown();renderAuth();}});
+setTimeout(renderAuth,1000);
 </script>
 </body>
 </html>
