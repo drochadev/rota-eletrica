@@ -35,13 +35,13 @@ A full-featured GPS nav app specifically for electric tricycles:
 ## How to Run Locally
 
 1. Clone the repo
-2. The `public/` folder is a static site — serve it with any HTTP server:
+2. Serve the `public/` folder with any HTTP server:
    ```
    python3 -m http.server 8080 -d public
    ```
 3. Open `http://localhost:8080` in a browser
 
-For map routing to work, the graph files (`graph-nn.json`, `graph-ad.json`, `graph-meta.json`) are included for the Campinas, SP region.
+Routing uses the free [OSRM](https://project-osrm.org/) demo server (online). Geocoding uses [Nominatim](https://nominatim.openstreetmap.org/) (free, no API key).
 
 ## Data Attribution
 
