@@ -877,6 +877,7 @@ let _initRan = false;
 async function init(){
   if (_initRan) return;
   _initRan = true;
+  try {
   checkPerm();
   if (DEV_SIM) {
     document.getElementById('loading-status').textContent='Iniciando simulação...';
@@ -891,14 +892,18 @@ async function init(){
   }
   rFavs();rHistory();upOdo();upBattery();
   document.getElementById('loading-status').textContent='Pronto';
-  setTimeout(()=>document.getElementById('loading').classList.add('hide'),300);
+  setTimeout(()=>document.getElementById('loading').classList.add('hide'),500);
   if (DEV_SIM) {
     patchGeolocation();
     startSim();
   }
   setTimeout(()=>requestGPS(), 300);
+  }catch(e){console.error('init error',e);}
+  document.getElementById('loading-status').textContent='Pronto';
+  setTimeout(()=>document.getElementById('loading').classList.add('hide'),500);
 }
 if(map.isStyleLoaded())init();else{map.on('load',init);setTimeout(init,5000);}
+setTimeout(()=>{const el=document.getElementById('loading');if(el&&!el.classList.contains('hide')){el.classList.add('hide');}},10000);
 
 // ====== PROFILE PAGE ======
 const $profile=document.getElementById('profile');
