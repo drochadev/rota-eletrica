@@ -116,7 +116,10 @@ onAuthStateChanged(auth,user=>{window.__fb.user=user;document.dispatchEvent(new 
       <h1 style="font-size:22px;font-weight:700;letter-spacing:-.5px;">Rota<span style="color:#6C5CE7">Elétrica</span></h1>
       <div id="auth-area"></div>
     </div>
-    <p style="font-size:13px;color:#666;margin-top:2px;">Navegação para autopropelidos · beta</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+      <p style="font-size:13px;color:#666;">Navegação para autopropelidos · beta</p>
+      <button id="btn-profile" style="display:none;background:none;border:none;color:#555;font-size:16px;cursor:pointer;padding:2px 6px;">⚙️</button>
+    </div>
     <div style="font-size:10px;color:#444;margin-top:1px;">seus dados salvos na nuvem</div>
   </div>
   <div id="home-gps-area">
@@ -133,6 +136,45 @@ onAuthStateChanged(auth,user=>{window.__fb.user=user;document.dispatchEvent(new 
     <div class="section-title">Histórico</div><div id="home-history"></div>
   </div>
   <div id="home-footer"></div>
+</div>
+
+<div id="profile" style="display:none;position:absolute;inset:0;z-index:600;background:#0a0a0f;padding:16px;overflow-y:auto;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <h2 style="font-size:20px;font-weight:700;">Perfil</h2>
+    <button id="btn-close-profile" style="background:none;border:none;color:#888;font-size:18px;cursor:pointer;">✕</button>
+  </div>
+  <div id="profile-user" style="text-align:center;padding:12px 0 16px;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:16px;">
+    <img id="profile-pic" src="" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;margin-bottom:6px;display:none;">
+    <div id="profile-name" style="font-size:16px;font-weight:600;"></div>
+    <div id="profile-email" style="font-size:12px;color:#666;"></div>
+  </div>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Seu veículo</div>
+    <div class="list-item" style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.04);border-radius:12px;">
+      <span style="font-size:14px;">Autonomia da bateria</span>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="btn-range-down" style="background:rgba(255,255,255,.08);border:none;border-radius:8px;color:#fff;width:28px;height:28px;font-size:16px;cursor:pointer;">−</button>
+        <span id="profile-range" style="font-size:16px;font-weight:600;min-width:48px;text-align:center;">35</span>
+        <span style="font-size:11px;color:#666;">km</span>
+        <button id="btn-range-up" style="background:rgba(255,255,255,.08);border:none;border-radius:8px;color:#fff;width:28px;height:28px;font-size:16px;cursor:pointer;">+</button>
+      </div>
+    </div>
+  </div>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Suas estatísticas</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div class="nav-tile"><div class="t-val" id="stat-total-trips">0</div><div class="t-lbl">Viagens</div></div>
+      <div class="nav-tile"><div class="t-val" id="stat-total-km">0</div><div class="t-lbl">KM totais</div></div>
+    </div>
+  </div>
+  <div style="margin-bottom:16px;">
+    <div style="font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Comunidade</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div class="nav-tile"><div class="t-val" id="stat-global-trips">--</div><div class="t-lbl">Viagens globais</div></div>
+      <div class="nav-tile"><div class="t-val" id="stat-global-km">--</div><div class="t-lbl">KM globais</div></div>
+    </div>
+  </div>
+  <button id="btn-signout" style="display:none;width:100%;padding:12px;border:1px solid rgba(255,80,80,.2);border-radius:12px;background:rgba(255,80,80,.08);color:#ff6666;font-size:14px;cursor:pointer;margin-top:8px;">Sair da conta</button>
 </div>
 
 <div id="nav">
@@ -161,53 +203,37 @@ onAuthStateChanged(auth,user=>{window.__fb.user=user;document.dispatchEvent(new 
 </div>
 
 <script>
-// ====== GRAPH ======
+// ====== ROUTING (OSRM) & GEOCODING (Nominatim) ======
 let HOME=null;
-const TERMINAL_PADRE_ANCHIETA={lat:-22.861264,lng:-47.153290,address:'Terminal Padre Anchieta, Campinas'};
-const BATTERY_RANGE_KM=35,RADIUS_KM=20;
-let graphData=null;
+const BATTERY_RANGE_KM=35;
+let geoCache={};
 
 function haversine(l1,g1,l2,g2){const R=6371000,dL=(l2-l1)*Math.PI/180,dG=(g2-g1)*Math.PI/180,a=Math.sin(dL/2)**2+Math.cos(l1*Math.PI/180)*Math.cos(l2*Math.PI/180)*Math.sin(dG/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
-function gLat(i){return graphData.nn[i*2];}
-function gLng(i){return graphData.nn[i*2+1];}
-function nearestNode(lat,lng){if(!graphData)return null;const n=graphData.nn.length/2;let b=0,bD=Infinity;for(let i=0;i<n;i++){const d=haversine(lat,lng,gLat(i),gLng(i));if(d<bD){bD=d;b=i;}}return b;}
 
-function dijkstra(fi,ti){
-  const a=graphData.ad,n=a.length,d=new Float64Array(n),p=new Int32Array(n);d.fill(Infinity);p.fill(-1);d[fi]=0;
-  const h=new Float64Array(n+1),hn=new Int32Array(n+1),pos=new Int32Array(n);pos.fill(-1);let hs=0;
-  function pu(nd,v){let i=++hs;h[i]=v;hn[i]=nd;pos[nd]=i;while(i>1){const p=i>>1;if(h[p]<=h[i])break;[h[p],h[i]]=[h[i],h[p]];[hn[p],hn[i]]=[hn[i],hn[p]];pos[hn[p]]=p;pos[hn[i]]=i;i=p;}}
-  function po(){if(!hs)return-1;const nd=hn[1];pos[nd]=-1;h[1]=h[hs];hn[1]=hn[hs];hs--;let i=1;while(1){let s=i,l=i<<1,r=l|1;if(l<=hs&&h[l]<h[s])s=l;if(r<=hs&&h[r]<h[s])s=r;if(s===i)break;[h[i],h[s]]=[h[s],h[i]];[hn[i],hn[s]]=[hn[s],hn[i]];pos[hn[i]]=i;pos[hn[s]]=s;i=s;}return nd;}
-  function de(nd,v){let i=pos[nd];if(i===-1){pu(nd,v);return;}h[i]=v;while(i>1){const p=i>>1;if(h[p]<=h[i])break;[h[p],h[i]]=[h[i],h[p]];[hn[p],hn[i]]=[hn[i],hn[p]];pos[hn[p]]=p;pos[hn[i]]=i;i=p;}}
-  pu(fi,0);
-  while(hs>0){const u=po();if(u===ti||u===-1)break;const du=d[u],ed=a[u];if(!ed)continue;for(let k=0;k<ed.length;k++){const v=ed[k][0],w=ed[k][2],nd=du+w;if(nd<d[v]){d[v]=nd;p[v]=u;de(v,nd);}}}
-  if(p[ti]===-1)return null;const r=[];for(let at=ti;at!==-1;at=p[at])r.push(at);return r.reverse();
+async function osrmRoute(flat,flng,tlat,tlng){
+  const url=`https://router.project-osrm.org/route/v1/driving/${flng},${flat};${tlng},${tlat}?overview=full&geometries=geojson&steps=true&annotations=true`;
+  const r=await fetch(url,{headers:{'User-Agent':'RotaEletrica/1.0'}});if(!r.ok)return null;
+  const d=await r.json();if(!d.routes||!d.routes.length)return null;
+  const rt=d.routes[0];const coords=rt.geometry.coordinates.map(c=>({lat:c[1],lng:c[0]}));
+  const distKm=Math.round(rt.distance/10)/100;
+  const segs=[];let lastNm='';
+  if(rt.legs&&rt.legs[0])for(const s of rt.legs[0].steps){if(s.name&&s.name!==lastNm){lastNm=s.name;
+    const mc=s.geometry.coordinates;const mp=mc[Math.floor(mc.length/2)];
+    segs.push({lat:mp[1],lng:mp[0],name:s.name,distance:s.distance});}}
+  return{route:coords,distance_km:distKm,duration_min:Math.round(rt.duration/60*10)/10,segments:segs};
 }
 
-function computeRoute(flat,flng,tlat,tlng){
-  if(!graphData)return null;const fi=nearestNode(flat,flng),ti=nearestNode(tlat,tlng);
-  if(fi===null||ti===null)return null;const path=dijkstra(fi,ti);if(!path)return null;
-  const a=graphData.ad,nm=graphData.nm,hw=graphData.hw,sp=graphData.sp;const route=[];let tD=0;const segs=[];
-  for(let i=0;i<path.length-1;i++){const u=path[i],v=path[i+1],ed=a[u];let e=null;for(let k=0;k<ed.length;k++){if(ed[k][0]===v){e=ed[k];break;}}if(!e)continue;route.push({lat:gLat(u),lng:gLng(u)});tD+=e[1];segs.push({lat:gLat(u),lng:gLng(u),name:nm[e[3]],highway:hw[e[4]],maxspeed:parseInt(sp[e[5]])||30});}
-  route.push({lat:gLat(path[path.length-1]),lng:gLng(path[path.length-1])});const distKm=tD/1000;return{route,distance_km:Math.round(distKm*100)/100,duration_min:Math.round(distKm*4*10)/10,segments:segs};
+async function nomSearch(q){
+  const url='https://nominatim.openstreetmap.org/search?format=json&limit=8&q='+encodeURIComponent(q)+'&countrycodes=br';
+  const r=await fetch(url,{headers:{'User-Agent':'RotaEletrica/1.0'}});if(!r.ok)return[];
+  const d=await r.json();return d.map(x=>({type:'address',name:x.display_name,lat:parseFloat(x.lat),lng:parseFloat(x.lon),score:99}));
 }
 
-function predictBattery(c){if(!c||c.length<2)return null;let k=0;for(let i=0;i<c.length-1;i++)k+=haversine(c[i].lat,c[i].lng,c[i+1].lat,c[i+1].lng)/1000;const p=(k/BATTERY_RANGE_KM)*100;return{range_consumed_pct:Math.round(p*10)/10,estimated_remaining_km:Math.max(0,Math.round((BATTERY_RANGE_KM-k)*10)/10),feasible:p<=100};}
-function predictBatteryWithGrade(c,grades){if(!c||c.length<2)return null;let e=0;for(let i=0;i<c.length-1;i++){const d=haversine(c[i].lat,c[i].lng,c[i+1].lat,c[i+1].lng)/1000;const g=grades&&grades[i]!==undefined?grades[i]:0;let f;if(g>0.02)f=1.5;else if(g<-0.02)f=0.6;else f=1.0;e+=d*f;}const p=(e/BATTERY_RANGE_KM)*100;return{range_consumed_pct:Math.round(p*10)/10,estimated_remaining_km:Math.max(0,Math.round((BATTERY_RANGE_KM-e)*10)/10),feasible:p<=100};}
-
-let geoCache={};
-async function searchIndex(q){
-  if(!graphData||!graphData.sr)return[];const w=q.toUpperCase().trim().split(/\s+/).filter(x=>x.length);if(!w.length)return[];
-  const nm=graphData.nm,hw=graphData.hw;const hc=HOME?(r)=>haversine(HOME.lat,HOME.lng,r.lat,r.lng)/1000<=RADIUS_KM:()=>true;
-  const r=[];for(const x of graphData.sr.r){const xn=nm[x.n];let s=0;for(const z of w)if(xn.toUpperCase().includes(z))s++;if(s&&(!HOME||hc(x)))r.push({type:'road',name:xn,highway:hw[x.h],lat:x.lat,lng:x.lng,score:s});}
-  // Nomimatim geocoding for addresses (if looks like an address)
-  if(q.length>8&&!/^\d+$/.test(q)&&geoCache[q]===undefined)try{
-    const res=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=3&q='+encodeURIComponent(q)+'&countrycodes=br',{headers:{'User-Agent':'RotaEletrica/1.0'}});
-    if(res.ok){const data=await res.json();geoCache[q]=data;for(const g of data)if(g.lat&&g.lon&&(!HOME||haversine(HOME.lat,HOME.lng,parseFloat(g.lat),parseFloat(g.lon))/1000<=RADIUS_KM))r.push({type:'address',name:g.display_name,lat:parseFloat(g.lat),lng:parseFloat(g.lon),score:99});}
-  }catch(e){}
-  r.sort((a,b)=>b.score-a.score);return r.slice(0,20);
+async function nomRev(lat,lng){
+  const url='https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&zoom=16';
+  const r=await fetch(url,{headers:{'User-Agent':'RotaEletrica/1.0'}});if(!r.ok)return null;
+  const d=await r.json();return d&&d.display_name?{name:d.display_name.split(',').slice(0,2).join(','),lat:parseFloat(d.lat),lng:parseFloat(d.lon)}:null;
 }
-
-function revGeo(lat,lng){if(!graphData||!graphData.sr)return null;const nm=graphData.nm,hw=graphData.hw;let b=null,bD=Infinity;for(const r of graphData.sr.r){const d=Math.abs(r.lat-lat)+Math.abs(r.lng-lng);if(d<bD){bD=d;b=r;}}return b?{name:nm[b.n],highway:hw[b.h],lat:b.lat,lng:b.lng}:null;}
 
 // ====== DB ======
 function openDB(){return new Promise((r,j)=>{const q=indexedDB.open('RE',2);q.onupgradeneeded=e=>{const d=e.target.result;if(!d.objectStoreNames.contains('t'))d.createObjectStore('t',{keyPath:'id',autoIncrement:true});if(!d.objectStoreNames.contains('f'))d.createObjectStore('f',{keyPath:'id',autoIncrement:true});if(!d.objectStoreNames.contains('o'))d.createObjectStore('o',{keyPath:'id'});if(!d.objectStoreNames.contains('r'))d.createObjectStore('r',{keyPath:'id',autoIncrement:true});};q.onsuccess=e=>r(e.target.result);q.onerror=e=>j(e.target.error);});}
@@ -321,8 +347,6 @@ map.on('movestart', (e) => {
 
 function elm(html){const d=document.createElement('div');d.innerHTML=html;return d.firstElementChild;}
 
-function roadCol(hwy){const local={'residential':1,'unclassified':1,'living_street':1,'service':1};return local[hwy]?'#e67e22':'#2ecc71';}
-
 function setGpsStatus(cls, msg, acc){
   const el=document.getElementById('home-gps-status');
   const icons={busy:'⏳',ok:'📍',err:'⚠️',warn:'⚠️'};
@@ -332,44 +356,24 @@ function setGpsStatus(cls, msg, acc){
   document.getElementById('home-gps-acc').textContent=acc?'precisão: '+(acc<1000?Math.round(acc)+' m':(acc/1000).toFixed(1)+' km'):'';
 }
 
-function onFix(p, source){
+async function onFix(p, source){
   const {latitude:la,longitude:ln,heading:h=null,speed:sp=null,accuracy:a=null}=p.coords;
   rawPos={lat:la,lng:ln};
-
-  // Project the raw fix onto the route so the camera glides smoothly along the
-  // road between sparse graph nodes. Falls back to the raw fix when off-route.
   let posLat=la,posLng=ln;
   const proj=rCoords&&rCoords.length>1?projectToRoute(la,ln,rCoords):null;
   if(proj&&proj.dist<200){posLat=proj.lat;posLng=proj.lng;}
-
-  // Snap-fitted position (nearest graph node) — used for routing and reverse-
-  // geocoding, but NOT for the camera, because the snap freezes on long segments.
-  const ni=nearestNode(la,ln);let sla=la,sln=ln;
-  if(ni!==null&&graphData){sla=gLat(ni);sln=gLng(ni);}
-  curPos={lat:sla,lng:sln,heading:h,speed:sp};
-
+  curPos={lat:la,lng:ln,heading:h,speed:sp};
   if(!curMkr){
     const e=elm('<svg viewBox="0 0 24 24" width="28" height="28"><polygon points="12,2 4,22 12,16 20,22" fill="#6C5CE7" stroke="#fff" stroke-width="1.5"/></svg>');
-    // rotationAlignment:'viewport' keeps the arrow pointing UP on screen so it
-    // always shows the direction of travel once the map is rotated to heading-up.
-    curMkr=new maplibregl.Marker({element:e,rotationAlignment:'viewport'}).setLngLat([posLng,posLat]).addTo(map);
-  }
+    curMkr=new maplibregl.Marker({element:e,rotationAlignment:'viewport'}).setLngLat([posLng,posLat]).addTo(map);}
   else curMkr.setLngLat([posLng,posLat]);
-
   if(isNav){
-    // Heading: use the GPS heading; fall back to the route direction when the
-    // device hasn't sent one yet (SIM, stationary user, cold start). MapLibre
-    // bearing = heading so that direction of travel sits at the top of screen.
-    // Bearing lock filters out noisy / false-positive direction changes.
     let rawHdg=h;
-    if(rawHdg===null||rawHdg===undefined||isNaN(rawHdg)||!isFinite(rawHdg)){
-      rawHdg=routeHeadingAt(la,ln,rCoords);
-    }
+    if(rawHdg===null||rawHdg===undefined||isNaN(rawHdg)||!isFinite(rawHdg))rawHdg=routeHeadingAt(la,ln,rCoords);
     const camHdg=updateBearing(rawHdg);
-    _camSetTarget(posLng,posLat,camHdg);
-  }
+    _camSetTarget(posLng,posLat,camHdg);}
   updateSpeedDisplay(sp);
-  const r=revGeo(sla,sln);document.getElementById('nav-road').textContent=r?r.name:'--';
+  const r=await nomRev(la,ln);document.getElementById('nav-road').textContent=r?r.name:'--';
   if(source==='one-shot'||source==='one-shot-ha'){setGpsStatus('ok','GPS pronto ('+source+')',a);
     if(!isNav&&!navActive&&curMkr)map.flyTo({center:[posLng,posLat],zoom:16,duration:800});}
   else setGpsStatus('ok','GPS ativo · '+(a<50?'excelente':a<200?'bom':'fraco'),a);
@@ -416,29 +420,12 @@ function updateSpeedDisplay(sp) {
   document.getElementById('tile-speed').textContent = sp !== null ? Math.round(sp * 3.6) : 0;
 }
 
-function renderRoute(segs) {
-  clearRoute(); if(!segs||segs.length<2)return;
-  if(!map.isStyleLoaded()){map.once('style.load',()=>renderRoute(segs));return;}
-  let roadSegs=segs.slice(0),approach=null;
-  for(let i=segs.length-1;i>=0;i--){if(segs[i].highway===''){roadSegs=segs.slice(0,i);approach=[segs[i-1],segs[i]];break;}}
-  // group by color (green vs orange)
-  if(roadSegs.length>1){
-    let grp=[roadSegs[0]],c=roadCol(roadSegs[0].highway);
-    for(let i=1;i<roadSegs.length;i++){
-      const nc=roadCol(roadSegs[i].highway);
-      if(nc===c)grp.push(roadSegs[i]);
-      else{_rl(grp,c);grp=[roadSegs[i-1],roadSegs[i]];c=nc;}
-    }
-    if(grp.length>1)_rl(grp,c);
-  }
-  if(approach)_rl(approach,roadCol(approach[0].highway),false);
-}
-function _rl(g,c,dash){
-  const id='rl_'+routeLayers.length;
-  map.addSource(id,{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:g.map(x=>[x.lng,x.lat])}}});
-  const paint={'line-color':c,'line-width':dash?4:5,'line-opacity':0.9};
-  if(dash)paint['line-dasharray']=[2,4];
-  map.addLayer({id,type:'line',source:id,paint});
+function renderRoute(coords) {
+  clearRoute(); if(!coords||coords.length<2)return;
+  if(!map.isStyleLoaded()){map.once('style.load',()=>renderRoute(coords));return;}
+  const id='rl_0';
+  map.addSource(id,{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:coords.map(x=>[x.lng,x.lat])}}});
+  map.addLayer({id,type:'line',source:id,paint:{'line-color':'#2ecc71','line-width':5,'line-opacity':0.9}});
   routeLayers.push(id);
 }
 function clearRoute(){
@@ -446,26 +433,9 @@ function clearRoute(){
   routeLayers=[];
 }
 
-function doRoute(flat,flng,tlat,tlng){
-  const r=computeRoute(flat,flng,tlat,tlng);if(!r){alert('Rota não encontrada');return null;}
-  // find best front-door point by projecting destination onto nearby road edges
-  const ti=nearestNode(tlat,tlng);
-  let fx=tlat,fy=tlng,fn='';
-  if(ti!==null&&graphData){
-    const edges=graphData.ad[ti],nm=graphData.nm;let bestD=Infinity;
-    for(let k=0;k<edges.length;k++){
-      const e=edges[k],v=e[0],lat1=gLat(ti),lng1=gLng(ti),lat2=gLat(v),lng2=gLng(v);
-      const dx=lat2-lat1,dy=lng2-lng1,d2=dx*dx+dy*dy;
-      if(d2<1e-14)continue;
-      const t=Math.max(0,Math.min(1,((tlat-lat1)*dx+(tlng-lng1)*dy)/d2));
-      const px=lat1+t*dx,py=lng1+t*dy;
-      const dd=haversine(tlat,tlng,px,py);
-      if(dd<bestD){bestD=dd;fx=px;fy=py;fn=nm[e[3]];}
-    }
-  }
-  const last=r.segments[r.segments.length-1];
-  if(last&&haversine(last.lat,last.lng,fx,fy)>5){r.segments.push({lat:fx,lng:fy,name:fn||last.name,highway:'',maxspeed:last.maxspeed||20});r.route.push({lat:fx,lng:fy});}
-  rCoords=r.route;renderRoute(r.segments);
+async function doRoute(flat,flng,tlat,tlng){
+  const r=await osrmRoute(flat,flng,tlat,tlng);if(!r){alert('Rota não encontrada');return null;}
+  rCoords=r.route;renderRoute(r.route);
   document.getElementById('stat-dist').textContent=r.distance_km;document.getElementById('stat-time').textContent=fmtChegada(r.duration_min);
   fitR();return r;
 }
@@ -505,9 +475,9 @@ setInterval(()=>{
 
 // ====== TRIP SAVE ======
 
-function saveTrip() {
+async function saveTrip() {
   if (!isNav || !dst) return;
-  const fromName = revGeo(sLat, sLng)?.name || 'Local';
+  const fromName = (await nomRev(sLat, sLng))?.name || 'Local';
   db.addTrip({
     from_name: fromName,
     from_lat: sLat || 0,
@@ -521,8 +491,8 @@ function saveTrip() {
 }
 
 // ====== NAV ======
-document.getElementById('btn-end-trip').addEventListener('click',()=>{
-  if(isNav){saveTrip();isNav=false;tStart=null;map.setBearing(0);if(window._navLock){clearTimeout(window._navLock);window._navLock=null;}}
+document.getElementById('btn-end-trip').addEventListener('click',async()=>{
+  if(isNav){await saveTrip();isNav=false;tStart=null;map.setBearing(0);if(window._navLock){clearTimeout(window._navLock);window._navLock=null;}}
   showHome();
 });
 // battery tile (4th tile, index 3): click to recharge
@@ -530,12 +500,12 @@ document.querySelector('#nav-tiles .nav-tile:nth-child(4)').addEventListener('cl
   if(confirm('Recarregar bateria e zerar odômetro?')){await db.setBat(100);await db.setOdo(0);upBattery();upOdo();dirty();}
 });
 
-map.on('click',e=>{
+map.on('click',async e=>{
   if(_settingHome){_homeClick=e.lngLat;
     if(!_homeTempMkr){const he=elm('<div style="font-size:32px;line-height:1;text-align:center;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6));">📍</div>');
       _homeTempMkr=new maplibregl.Marker({element:he,anchor:'bottom'}).setLngLat([e.lngLat.lng,e.lngLat.lat]).addTo(map);}
     else _homeTempMkr.setLngLat([e.lngLat.lng,e.lngLat.lat]);return;}
-  if(!navActive)return;const r=revGeo(e.lngLat.lat,e.lngLat.lng);goToNav(e.lngLat.lat,e.lngLat.lng,r?r.name:'Ponto');
+  if(!navActive)return;const r=await nomRev(e.lngLat.lat,e.lngLat.lng);goToNav(e.lngLat.lat,e.lngLat.lng,r?r.name:'Ponto');
 });
 
 // ====== SCREENS ======
@@ -549,8 +519,8 @@ function showHome() {
   rFavs();rHistory();upOdo();
 }
 
-function goToNav(lat,lng,label) {
-  if(isNav&&dst)saveTrip();  // save ongoing trip before switching destination
+async function goToNav(lat,lng,label) {
+  if(isNav&&dst)await saveTrip();
   $home.classList.add('hidden');$nav.classList.add('active');navActive=true;
   setTimeout(()=>map.resize(),100);
   dst={lat,lng,label:label||'Destino'};
@@ -559,20 +529,18 @@ function goToNav(lat,lng,label) {
   dstMkr=new maplibregl.Marker({element:e}).setLngLat([lng,lat]).addTo(map);
   if(curPos){
     sLat=curPos.lat;sLng=curPos.lng;
-    const r=doRoute(curPos.lat,curPos.lng,lat,lng);
+    const r=await doRoute(curPos.lat,curPos.lng,lat,lng);
     isNav=true;tStart=Date.now();accDist=0;lOP=curPos;
     window._navLock=setTimeout(()=>window._navLock=null,2000);
-
     const initHdg=routeHeadingAt(curPos.lat,curPos.lng,r&&r.route&&r.route.length>1?r.route:rCoords);
     _camSetTarget(curPos.lng,curPos.lat,initHdg!==null?initHdg:0,17);
     _camFollow=true;
   }
-  else{}
   db.addRecent(label||'Destino',lat,lng);
 }
 // ====== SEARCH ======
 const $s=document.getElementById('home-search'),$sr=document.getElementById('home-search-results');let sTO=null;
- $s.addEventListener('input',()=>{clearTimeout(sTO);const q=$s.value.trim();if(q.length<2){$sr.style.display='none';return;}sTO=setTimeout(async()=>{const r=await searchIndex(q);$sr.innerHTML='';if(!r||!r.length){$sr.style.display='none';return;}r.forEach(x=>{const ref=curPos;const d=ref?haversine(ref.lat,ref.lng,x.lat,x.lng)/1000:0;const di=document.createElement('div');di.className='search-item';const label=x.type==='address'?x.name.split(',').slice(0,2).join(','):x.name;di.innerHTML=`<strong>${label}</strong><small>${x.type==='road'?x.highway:'endereço'} &middot; ${d.toFixed(1)} km</small>`;di.addEventListener('click',()=>{$s.value=x.name;$sr.style.display='none';goToNav(x.lat,x.lng,x.name);});$sr.appendChild(di);});$sr.style.display='block';},300);});
+ $s.addEventListener('input',()=>{clearTimeout(sTO);const q=$s.value.trim();if(q.length<2){$sr.style.display='none';return;}sTO=setTimeout(async()=>{const r=await nomSearch(q);$sr.innerHTML='';if(!r||!r.length){$sr.style.display='none';return;}r.forEach(x=>{const ref=curPos;const d=ref?haversine(ref.lat,ref.lng,x.lat,x.lng)/1000:0;const di=document.createElement('div');di.className='search-item';di.innerHTML=`<strong>${x.name.split(',').slice(0,2).join(',')}</strong><small>endereço &middot; ${d.toFixed(1)} km</small>`;di.addEventListener('click',()=>{$s.value=x.name;$sr.style.display='none';goToNav(x.lat,x.lng,x.name);});$sr.appendChild(di);});$sr.style.display='block';},300);});
 document.addEventListener('click',e=>{if(!$sr.contains(e.target)&&e.target!==$s)$sr.style.display='none';});
 document.getElementById('home-btn-go').addEventListener('click',()=>{if(curPos)map.flyTo({center:[curPos.lng,curPos.lat],zoom:16});else if(HOME)map.flyTo({center:[HOME.lng,HOME.lat],zoom:16});$nav.classList.add('active');navActive=true;$home.classList.add('hidden');setTimeout(()=>map.resize(),100);});
 
@@ -591,7 +559,7 @@ function startSetHome(){
 document.getElementById('btn-confirm-home').addEventListener('click',async()=>{
   if(!_homeClick){alert('Clique no mapa primeiro');return;}
   const lat=_homeClick.lat,lng=_homeClick.lng;
-  const r=revGeo(lat,lng);const addr=r?r.name:'Casa';
+  const r=await nomRev(lat,lng);const addr=r?r.name:'Casa';
   await db.setHome(lat,lng,addr);
   if(!HOME) HOME={};HOME.lat=lat;HOME.lng=lng;HOME.address=addr;
   if(!homeMkr){const he=elm('<div style="font-size:28px;line-height:1;text-align:center;">🏠</div>');
@@ -610,9 +578,9 @@ async function rFavs(){const f=await db.favs();const e=document.getElementById('
     d.innerHTML=`<span class="name" style="color:#6C5CE7;font-weight:600;">🏠 Definir Casa</span><small style="color:#6C5CE7;">clique no mapa</small>`;
     d.addEventListener('click',()=>{startSetHome();});e.appendChild(d);return;}
   if(!f.length){e.innerHTML='<div style="color:#555;font-size:12px;padding:4px;">Nenhum favorito</div>';return;}
-  f.forEach(x=>{const isHome=Math.abs(x.lat-HOME.lat)<1e-4&&Math.abs(x.lng-HOME.lng)<1e-4;const d=document.createElement('div');d.className='list-item';const rr=revGeo(x.lat,x.lng);const nm=isHome?'🏠 Casa':x.name;
-  d.innerHTML=`<span class="name">${nm}</span><small>${rr?rr.name:''}</small>${isHome?`<button class="icon-btn" data-a="e">⚙️</button>`:`<button class="icon-btn" data-a="r">&#9998;</button><button class="icon-btn" data-a="d">&times;</button>`}`;
-  d.addEventListener('click',(e)=>{if(e.target.closest('.icon-btn'))return;goToNav(x.lat,x.lng,isHome?'Casa':x.name);});
+  f.forEach(x=>{const isHome=Math.abs(x.lat-HOME.lat)<1e-4&&Math.abs(x.lng-HOME.lng)<1e-4;const d=document.createElement('div');d.className='list-item';const nm=isHome?'🏠 Casa':x.name;
+  d.innerHTML=`<span class="name">${nm}</span><small></small>${isHome?`<button class="icon-btn" data-a="e">⚙️</button>`:`<button class="icon-btn" data-a="r">&#9998;</button><button class="icon-btn" data-a="d">&times;</button>`}`;
+  d.addEventListener('click',async(e)=>{if(e.target.closest('.icon-btn'))return;goToNav(x.lat,x.lng,isHome?'Casa':x.name);});
   if(isHome){d.querySelector('[data-a=e]').addEventListener('click',e=>{e.stopPropagation();startSetHome();});}
   else{d.querySelector('[data-a=r]').addEventListener('click',async e=>{e.stopPropagation();const n=prompt('Renomear:',x.name);if(n&&n.trim()){x.name=n.trim();await db.updFav(x);rFavs();dirty();}});
   d.querySelector('[data-a=d]').addEventListener('click',async e=>{e.stopPropagation();await db.delFav(x.id);rFavs();dirty();});}e.appendChild(d);});
@@ -712,7 +680,7 @@ let _rerouteCount = 0;
 setInterval(async()=>{
   if(isNav&&curPos&&dst){
     const d=haversine(curPos.lat,curPos.lng,dst.lat,dst.lng);
-    if(d<30){saveTrip();alert('Você chegou!');isNav=false;tStart=null;map.setBearing(0);showHome();return;}
+    if(d<30){await saveTrip();alert('Você chegou!');isNav=false;tStart=null;map.setBearing(0);showHome();return;}
     if(lOP){
       const delta=haversine(curPos.lat,curPos.lng,lOP.lat,lOP.lng);
       if(delta>5){accDist+=delta;const k=await db.odo();await db.setOdo(k+delta/1000);upOdo();
@@ -724,7 +692,7 @@ setInterval(async()=>{
         const spd=curPos.speed!==null?curPos.speed*3.6:0;
         if(spd>0){
           const p=await db.bat();
-          const baseDrainPerKm=100/BATTERY_RANGE_KM;
+          const baseDrainPerKm=100/getBatteryRange();
           let factor;
           if(spd<=8) factor=1.5;      // slow = uphill / heavy
           else if(spd<=18) factor=1.0; // normal cruise
@@ -740,7 +708,7 @@ setInterval(async()=>{
       const offDist=distToRoute(curPos.lat,curPos.lng,rCoords);
       if(offDist>REROUTE_THRESHOLD_M){
         _rerouteCount++;
-        const r=doRoute(curPos.lat,curPos.lng,dst.lat,dst.lng);
+        const r=await doRoute(curPos.lat,curPos.lng,dst.lat,dst.lng);
         if(r){
           console.log(`[reroute #${_rerouteCount}] off by ${offDist.toFixed(0)}m → new route ${r.distance_km}km`);
           if(typeof SIM!=='undefined'&&SIM.on)SIM.lastRouteRef=null;
@@ -764,8 +732,8 @@ const DEV_SIM = (() => {
 
 const SIM = {
   on: DEV_SIM,
-  lat: TERMINAL_PADRE_ANCHIETA.lat,
-  lng: TERMINAL_PADRE_ANCHIETA.lng,
+  lat: -22.861,
+  lng: -47.153,
   spd: 0,
   hdg: 0,
   acc: 8,
@@ -879,8 +847,8 @@ function simTick() {
 
 function startSim() {
   if (!SIM.on || SIM.tickId) return;
-  SIM.lat = TERMINAL_PADRE_ANCHIETA.lat;
-  SIM.lng = TERMINAL_PADRE_ANCHIETA.lng;
+  SIM.lat = -22.861;
+  SIM.lng = -47.153;
   SIM.lastT = performance.now();
   SIM.tickId = setInterval(simTick, 1000);
   document.getElementById('sim-banner').classList.add('on');
@@ -922,13 +890,8 @@ async function init(){
     await upsertCasaFav();
   }
   rFavs();rHistory();upOdo();upBattery();
-  try{
-    const [nnR,adR,metaR]=await Promise.all([fetch('graph-nn.json'),fetch('graph-ad.json'),fetch('graph-meta.json')]);
-    const [nnD,adD,metaD]=await Promise.all([nnR.json(),adR.json(),metaR.json()]);
-    graphData={...nnD,...adD,...metaD};
-    document.getElementById('loading-status').textContent=`Pronto (${(graphData.nn.length/2/1000).toFixed(0)}k pontos)`;
-    setTimeout(()=>document.getElementById('loading').classList.add('hide'),500);
-  }catch(e){document.getElementById('loading-status').textContent='Erro';console.error(e);}
+  document.getElementById('loading-status').textContent='Pronto';
+  setTimeout(()=>document.getElementById('loading').classList.add('hide'),300);
   if (DEV_SIM) {
     patchGeolocation();
     startSim();
@@ -937,19 +900,59 @@ async function init(){
 }
 if(map.isStyleLoaded())init();else{map.on('load',init);setTimeout(init,5000);}
 
+// ====== PROFILE PAGE ======
+const $profile=document.getElementById('profile');
+document.getElementById('btn-close-profile').onclick=()=>{$profile.style.display='none';};
+document.getElementById('btn-signout').onclick=()=>{const fb=window.__fb;if(fb)fb.signOut(fb.auth);$profile.style.display='none';};
+document.getElementById('btn-profile').onclick=async()=>{
+  const fb=window.__fb;if(!fb||!fb.user)return;
+  $profile.style.display='block';document.getElementById('profile-pic').src=fb.user.photoURL||'';document.getElementById('profile-pic').style.display=fb.user.photoURL?'block':'none';
+  document.getElementById('profile-name').textContent=fb.user.displayName||'Usuário';
+  document.getElementById('profile-email').textContent=fb.user.email||'';
+  const trips=await db.trips();const odo=await db.odo();
+  document.getElementById('stat-total-trips').textContent=trips.length;
+  document.getElementById('stat-total-km').textContent=odo.toFixed(1);
+  // Update battery range display
+  const snap=await fb.getDoc(fb.doc(fb.db,'users',fb.user.uid));
+  const br=(snap.exists()&&snap.data().batteryRange)||BATTERY_RANGE_KM;
+  document.getElementById('profile-range').textContent=br;
+  // Load global stats
+  try{const gs=await fb.getDoc(fb.doc(fb.db,'stats','global'));
+    if(gs.exists()){const g=gs.data();document.getElementById('stat-global-trips').textContent=g.total_trips||'--';document.getElementById('stat-global-km').textContent=g.total_km?g.total_km.toFixed(0):'--';}
+  }catch(e){}
+  document.getElementById('btn-signout').style.display='block';
+};
+document.getElementById('btn-range-down').onclick=async()=>{
+  const el=document.getElementById('profile-range');let v=parseInt(el.textContent)||BATTERY_RANGE_KM;if(v>15){v-=5;el.textContent=v;await saveBatteryRange(v);}};
+document.getElementById('btn-range-up').onclick=async()=>{
+  const el=document.getElementById('profile-range');let v=parseInt(el.textContent)||BATTERY_RANGE_KM;if(v<100){v+=5;el.textContent=v;await saveBatteryRange(v);}};
+async function saveBatteryRange(v){const fb=window.__fb;if(!fb||!fb.user)return;
+  await fb.setDoc(fb.doc(fb.db,'users',fb.user.uid),{batteryRange:v},{merge:true});
+  // Update in-memory constant
+  window.__batteryRange=v;}
+// Override battery calculations to use user's stored range
+function getBatteryRange(){return window.__batteryRange||BATTERY_RANGE_KM;}
+
 // ====== FIREBASE AUTH + CLOUD SYNC ======
 function renderAuth(){const a=document.getElementById('auth-area'),fb=window.__fb;if(!fb||!fb.ready){a.innerHTML='';return;}
   if(fb.user){const u=fb.user;a.innerHTML=`<button id="auth-btn" title="Clique para sair"><img src="${u.photoURL||''}" alt=""> ${u.displayName||''}</button>`;
-    document.getElementById('auth-btn').onclick=()=>fb.signOut(fb.auth);}
+    document.getElementById('auth-btn').onclick=()=>fb.signOut(fb.auth);
+    document.getElementById('btn-profile').style.display='block';}
   else{a.innerHTML=`<button id="auth-btn" style="background:#fff;color:#444;font-size:12px;font-weight:500;box-shadow:0 2px 8px rgba(0,0,0,.2);padding:5px 14px;"><span style="color:#4285F4;font-weight:700;margin-right:4px;">G</span> Entrar</button>`;
-    document.getElementById('auth-btn').onclick=()=>fb.signInWithPopup(fb.auth,fb.provider).catch(()=>{});}}
+    document.getElementById('auth-btn').onclick=()=>fb.signInWithPopup(fb.auth,fb.provider).catch(()=>{});
+    document.getElementById('btn-profile').style.display='none';}}
 async function syncDown(){const fb=window.__fb;if(!fb||!fb.user)return;const snap=await fb.getDoc(fb.doc(fb.db,'users',fb.user.uid));if(!snap.exists())return;
   const d=snap.data();if(d.home){HOME={lat:d.home.lat,lng:d.home.lng,address:d.home.address||'Casa'};_homeSet=true;await db.setHome(HOME.lat,HOME.lng,HOME.address);}
   if(d.odometer!=null)await db.setOdo(d.odometer);if(d.favorites&&d.favorites.length){const ex=await db.favs();for(const f of d.favorites)if(!ex.find(x=>Math.abs(x.lat-f.lat)<1e-4&&Math.abs(x.lng-f.lng)<1e-4))await db.addFav(f.name,f.lat,f.lng);}
   if(d.recents&&d.recents.length){const ex=await db.recents();for(const r of d.recents)if(!ex.find(x=>Math.abs(x.lat-r.lat)<1e-4&&Math.abs(x.lng-r.lng)<1e-4))await ad('r',{name:r.name,lat:r.lat,lng:r.lng,created_at:r.created_at||Math.floor(Date.now()/1000)});}
+  if(d.batteryRange)window.__batteryRange=d.batteryRange;
   rFavs();rHistory();upOdo();upBattery();}
 async function syncUp(){const fb=window.__fb;if(!fb||!fb.user)return;const[h,favs]=await Promise.all([db.home(),db.favs()]);const recents=await ga('r');const odo=await db.odo();
-  await fb.setDoc(fb.doc(fb.db,'users',fb.user.uid),{home:h||null,favorites:favs||[],recents:recents||[],odometer:odo||0,odometer_updated:Date.now()});}
+  await fb.setDoc(fb.doc(fb.db,'users',fb.user.uid),{home:h||null,favorites:favs||[],recents:recents||[],odometer:odo||0,batteryRange:getBatteryRange(),odometer_updated:Date.now()},{merge:true});
+  // Update global stats
+  try{const gs=await fb.getDoc(fb.doc(fb.db,'stats','global'));
+    const g=gs.exists()?gs.data():{total_trips:0,total_km:0};
+    await fb.setDoc(fb.doc(fb.db,'stats','global'),{total_trips:g.total_trips+1,total_km:g.total_km+odo},{merge:true});}catch(e){}}
 let _syncTO=null;function dirty(){clearTimeout(_syncTO);_syncTO=setTimeout(syncUp,3000);}
 document.addEventListener('fb-auth',async e=>{renderAuth();if(e.detail.user){await syncDown();renderAuth();}});
 setTimeout(renderAuth,1000);
